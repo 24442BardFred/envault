@@ -1,0 +1,12 @@
+# Typescript
+
+node_modules/
+
+build/
+.env.local
+out/
+*.log
+*.tsbuildinfo
+npm-debug.log*
+.next/
+Thumbs.db
