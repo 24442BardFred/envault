@@ -1,54 +1,51 @@
-import { describe, it, expect } from 'vitest';
-import { createShareBundle, openShareBundle } from './index';
-import type { EnvMap } from '../env/parser';
+import { createShareBundle, importShareBundle, VaultData } from './index';
 
-const sampleEnv: EnvMap = new Map([
-  ['API_KEY', 'super-secret-123'],
-  ['DATABASE_URL', 'postgres://localhost:5432/mydb'],
-  ['NODE_ENV', 'production'],
-]);
+const sampleVault: VaultData = {
+  DATABASE_URL: 'postgres://localhost/mydb',
+  API_KEY: 'supersecretkey',
+  DEBUG: 'true',
+};
 
-const passphrase = 'correct-horse-battery-staple';
+const sharePassword = 'share-pass-123';
 
 describe('createShareBundle', () => {
-  it('returns a non-empty bundle string and a base64 salt', async () => {
-    const result = await createShareBundle(sampleEnv, { passphrase });
-    expect(typeof result.bundle).toBe('string');
-    expect(result.bundle.length).toBeGreaterThan(0);
-    expect(typeof result.salt).toBe('string');
-    expect(Buffer.from(result.salt, 'base64').length).toBe(16);
+  it('should create a non-empty bundle string', async () => {
+    const bundle = await createShareBundle(sampleVault, sharePassword);
+    expect(typeof bundle).toBe('string');
+    expect(bundle.length).toBeGreaterThan(0);
   });
 
-  it('produces different bundles for the same input (random IV)', async () => {
-    const r1 = await createShareBundle(sampleEnv, { passphrase });
-    const r2 = await createShareBundle(sampleEnv, { passphrase });
-    expect(r1.bundle).not.toBe(r2.bundle);
+  it('should only include specified keys', async () => {
+    const bundle = await createShareBundle(sampleVault, sharePassword, ['API_KEY']);
+    const imported = await importShareBundle(bundle, sharePassword, {}, false);
+    expect(imported).toHaveProperty('API_KEY');
+    expect(imported).not.toHaveProperty('DATABASE_URL');
   });
 });
 
-describe('openShareBundle', () => {
-  it('round-trips an env map through share bundle', async () => {
-    const { bundle, salt } = await createShareBundle(sampleEnv, { passphrase });
-    const recovered = await openShareBundle(bundle, passphrase, salt);
-
-    expect(recovered.size).toBe(sampleEnv.size);
-    for (const [key, value] of sampleEnv) {
-      expect(recovered.get(key)).toBe(value);
-    }
+describe('importShareBundle', () => {
+  it('should correctly round-trip vault data', async () => {
+    const bundle = await createShareBundle(sampleVault, sharePassword);
+    const result = await importShareBundle(bundle, sharePassword, {}, false);
+    expect(result).toEqual(sampleVault);
   });
 
-  it('throws when decrypting with the wrong passphrase', async () => {
-    const { bundle, salt } = await createShareBundle(sampleEnv, { passphrase });
-    await expect(
-      openShareBundle(bundle, 'wrong-passphrase', salt)
-    ).rejects.toThrow();
+  it('should not overwrite existing keys when overwrite is false', async () => {
+    const bundle = await createShareBundle(sampleVault, sharePassword);
+    const existing: VaultData = { API_KEY: 'original-key' };
+    const result = await importShareBundle(bundle, sharePassword, existing, false);
+    expect(result.API_KEY).toBe('original-key');
   });
 
-  it('throws when decrypting with the wrong salt', async () => {
-    const { bundle } = await createShareBundle(sampleEnv, { passphrase });
-    const wrongSalt = Buffer.alloc(16, 0xff).toString('base64');
-    await expect(
-      openShareBundle(bundle, passphrase, wrongSalt)
-    ).rejects.toThrow();
+  it('should overwrite existing keys when overwrite is true', async () => {
+    const bundle = await createShareBundle(sampleVault, sharePassword);
+    const existing: VaultData = { API_KEY: 'original-key' };
+    const result = await importShareBundle(bundle, sharePassword, existing, true);
+    expect(result.API_KEY).toBe('supersecretkey');
+  });
+
+  it('should throw on wrong password', async () => {
+    const bundle = await createShareBundle(sampleVault, sharePassword);
+    await expect(importShareBundle(bundle, 'wrong-password', {}, false)).rejects.toThrow();
   });
 });
