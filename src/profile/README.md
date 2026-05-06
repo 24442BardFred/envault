@@ -1,55 +1,47 @@
 # Profile Module
 
-The **profile** module allows users to manage multiple named envault profiles, each pointing to a different vault file. This is useful for switching between different projects or environments (e.g. `dev`, `staging`, `prod`).
-
-## Storage
-
-Profiles are stored in `~/.envault/profiles.json` as a JSON file containing:
-
-- `active` — the name of the currently active profile (or `null`)
-- `profiles` — a map of profile name → profile metadata
+Manages named vault profiles, allowing teams to switch between different environments (e.g. `dev`, `staging`, `prod`) each backed by a separate encrypted vault file.
 
 ## API
 
-### `createProfile(name, vaultPath): EnvaultProfile`
+### `createProfile(name: string): Profile`
+Creates a new named profile and persists it to the profile store.
 
-Creates a new named profile pointing to the given vault file path. If this is the first profile, it is automatically set as active.
+### `switchProfile(name: string): void`
+Sets the given profile as active.
 
-### `switchProfile(name): void`
+### `listProfiles(): Profile[]`
+Returns all stored profiles.
 
-Sets the named profile as the active profile and updates its `lastUsed` timestamp.
+### `deleteProfile(name: string): void`
+Removes a profile by name (cannot delete the active profile).
 
-### `deleteProfile(name): void`
+### `getActiveProfile(): Profile`
+Returns the currently active profile.
 
-Removes a profile. If the deleted profile was active, the next available profile is promoted, or `active` is set to `null`.
+### `resolveVaultPath(profile?: string): string`
+Returns the vault file path for the given profile name, or the active profile if omitted.
 
-### `getActiveProfile(): EnvaultProfile | null`
+## Profile Store
 
-Returns the currently active profile, or `null` if none is set.
+Profiles are stored in `~/.envault/profiles.json`.
 
-### `listProfiles(): EnvaultProfile[]`
+```json
+{
+  "active": "dev",
+  "profiles": [
+    { "name": "dev", "vaultPath": "~/.envault/vaults/dev.vault" },
+    { "name": "prod", "vaultPath": "~/.envault/vaults/prod.vault" }
+  ]
+}
+```
 
-Returns all registered profiles.
+## Usage
 
-### `resolveVaultPath(): string` (from `index.ts`)
+```ts
+import { createProfile, switchProfile, resolveVaultPath } from './profile';
 
-Convenience helper that returns the vault path of the active profile, or falls back to `defaultVaultPath` if no profile is active.
-
-## CLI Usage
-
-```bash
-# Create a new profile
-envault profile create --name dev --vault ~/.envault/dev.vault
-
-# Switch active profile
-envault profile switch --name prod
-
-# List all profiles (* marks active)
-envault profile list
-
-# Show active profile
-envault profile active
-
-# Delete a profile
-envault profile delete --name staging
+createProfile('staging');
+switchProfile('staging');
+const vaultPath = resolveVaultPath(); // ~/.envault/vaults/staging.vault
 ```
