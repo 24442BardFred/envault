@@ -1,4 +1,5 @@
 import { parseEnv } from './parser';
+import * as fs from 'fs';
 
 export interface ValidationRule {
   key: string;
@@ -16,15 +17,14 @@ export interface ValidationResult {
 }
 
 export interface ValidationReport {
-  passed: boolean;
+  valid: boolean;
   results: ValidationResult[];
 }
 
 export function validateEnv(
-  raw: string,
+  env: Record<string, string>,
   rules: ValidationRule[]
 ): ValidationReport {
-  const env = parseEnv(raw);
   const results: ValidationResult[] = [];
 
   for (const rule of rules) {
@@ -37,29 +37,20 @@ export function validateEnv(
 
     if (value !== undefined && value !== '') {
       if (rule.pattern && !rule.pattern.test(value)) {
-        errors.push(
-          `Key "${rule.key}" does not match pattern ${rule.pattern}.`
-        );
+        errors.push(`Key "${rule.key}" does not match required pattern ${rule.pattern}.`);
       }
 
       if (rule.minLength !== undefined && value.length < rule.minLength) {
-        errors.push(
-          `Key "${rule.key}" must be at least ${rule.minLength} characters.`
-        );
+        errors.push(`Key "${rule.key}" must be at least ${rule.minLength} characters long.`);
       }
 
       if (rule.maxLength !== undefined && value.length > rule.maxLength) {
-        errors.push(
-          `Key "${rule.key}" must be at most ${rule.maxLength} characters.`
-        );
+        errors.push(`Key "${rule.key}" must be at most ${rule.maxLength} characters long.`);
       }
 
-      if (
-        rule.allowedValues &&
-        !rule.allowedValues.includes(value)
-      ) {
+      if (rule.allowedValues && !rule.allowedValues.includes(value)) {
         errors.push(
-          `Key "${rule.key}" must be one of: ${rule.allowedValues.join(', ')}.`
+          `Key "${rule.key}" must be one of [${rule.allowedValues.join(', ')}], got "${value}".`
         );
       }
     }
@@ -68,18 +59,22 @@ export function validateEnv(
   }
 
   return {
-    passed: results.every((r) => r.valid),
+    valid: results.every((r) => r.valid),
     results,
   };
 }
 
 export function formatValidationReport(report: ValidationReport): string {
-  if (report.passed) return '✔ All validation rules passed.';
+  if (report.valid) {
+    return '✅ All validation rules passed.';
+  }
 
-  const lines: string[] = ['✖ Validation failed:'];
+  const lines: string[] = ['❌ Validation failed:'];
   for (const result of report.results) {
-    for (const err of result.errors) {
-      lines.push(`  - ${err}`);
+    if (!result.valid) {
+      for (const err of result.errors) {
+        lines.push(`  • ${err}`);
+      }
     }
   }
   return lines.join('\n');

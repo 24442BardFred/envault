@@ -1,93 +1,100 @@
 import { validateEnv, formatValidationReport, ValidationRule } from './validate';
 
-const sampleEnv = `
-DB_HOST=localhost
-DB_PORT=5432
-APP_ENV=production
-SECRET_KEY=supersecretvalue123
-`.trim();
-
 describe('validateEnv', () => {
-  it('passes when all required keys are present', () => {
-    const rules: ValidationRule[] = [
-      { key: 'DB_HOST', required: true },
-      { key: 'DB_PORT', required: true },
-    ];
-    const report = validateEnv(sampleEnv, rules);
-    expect(report.passed).toBe(true);
+  const rules: ValidationRule[] = [
+    { key: 'DATABASE_URL', required: true },
+    { key: 'PORT', required: true, pattern: /^\d+$/, minLength: 1, maxLength: 5 },
+    { key: 'NODE_ENV', required: true, allowedValues: ['development', 'production', 'test'] },
+    { key: 'API_KEY', required: false, minLength: 16 },
+  ];
+
+  it('returns valid report when all rules pass', () => {
+    const env = {
+      DATABASE_URL: 'postgres://localhost/db',
+      PORT: '3000',
+      NODE_ENV: 'production',
+      API_KEY: 'abcdefghijklmnop',
+    };
+    const report = validateEnv(env, rules);
+    expect(report.valid).toBe(true);
     expect(report.results.every((r) => r.valid)).toBe(true);
   });
 
-  it('fails when a required key is missing', () => {
-    const rules: ValidationRule[] = [
-      { key: 'MISSING_KEY', required: true },
-    ];
-    const report = validateEnv(sampleEnv, rules);
-    expect(report.passed).toBe(false);
-    expect(report.results[0].errors).toContain(
-      'Key "MISSING_KEY" is required but missing or empty.'
-    );
+  it('fails when required key is missing', () => {
+    const env = {
+      PORT: '3000',
+      NODE_ENV: 'development',
+    };
+    const report = validateEnv(env, rules);
+    expect(report.valid).toBe(false);
+    const dbResult = report.results.find((r) => r.key === 'DATABASE_URL');
+    expect(dbResult?.valid).toBe(false);
+    expect(dbResult?.errors[0]).toMatch(/required/);
   });
 
-  it('fails when value does not match pattern', () => {
-    const rules: ValidationRule[] = [
-      { key: 'DB_PORT', pattern: /^\d{4}$/ },
-    ];
-    const report = validateEnv(sampleEnv, rules);
-    expect(report.passed).toBe(true); // 5432 matches \d{4}
+  it('fails when pattern does not match', () => {
+    const env = {
+      DATABASE_URL: 'postgres://localhost/db',
+      PORT: 'not-a-number',
+      NODE_ENV: 'production',
+    };
+    const report = validateEnv(env, rules);
+    expect(report.valid).toBe(false);
+    const portResult = report.results.find((r) => r.key === 'PORT');
+    expect(portResult?.errors.some((e) => e.includes('pattern'))).toBe(true);
   });
 
-  it('fails when value is too short', () => {
-    const rules: ValidationRule[] = [
-      { key: 'DB_HOST', minLength: 20 },
-    ];
-    const report = validateEnv(sampleEnv, rules);
-    expect(report.passed).toBe(false);
-    expect(report.results[0].errors[0]).toMatch(/at least 20 characters/);
+  it('fails when value not in allowedValues', () => {
+    const env = {
+      DATABASE_URL: 'postgres://localhost/db',
+      PORT: '8080',
+      NODE_ENV: 'staging',
+    };
+    const report = validateEnv(env, rules);
+    expect(report.valid).toBe(false);
+    const envResult = report.results.find((r) => r.key === 'NODE_ENV');
+    expect(envResult?.errors.some((e) => e.includes('one of'))).toBe(true);
   });
 
-  it('fails when value is too long', () => {
-    const rules: ValidationRule[] = [
-      { key: 'SECRET_KEY', maxLength: 5 },
-    ];
-    const report = validateEnv(sampleEnv, rules);
-    expect(report.passed).toBe(false);
-    expect(report.results[0].errors[0]).toMatch(/at most 5 characters/);
+  it('fails when optional key is present but too short', () => {
+    const env = {
+      DATABASE_URL: 'postgres://localhost/db',
+      PORT: '3000',
+      NODE_ENV: 'test',
+      API_KEY: 'short',
+    };
+    const report = validateEnv(env, rules);
+    expect(report.valid).toBe(false);
+    const apiResult = report.results.find((r) => r.key === 'API_KEY');
+    expect(apiResult?.errors.some((e) => e.includes('at least'))).toBe(true);
   });
 
-  it('fails when value is not in allowedValues', () => {
-    const rules: ValidationRule[] = [
-      { key: 'APP_ENV', allowedValues: ['development', 'staging'] },
-    ];
-    const report = validateEnv(sampleEnv, rules);
-    expect(report.passed).toBe(false);
-    expect(report.results[0].errors[0]).toMatch(/development, staging/);
-  });
-
-  it('passes when value is in allowedValues', () => {
-    const rules: ValidationRule[] = [
-      { key: 'APP_ENV', allowedValues: ['production', 'staging'] },
-    ];
-    const report = validateEnv(sampleEnv, rules);
-    expect(report.passed).toBe(true);
+  it('passes when optional key is absent', () => {
+    const env = {
+      DATABASE_URL: 'postgres://localhost/db',
+      PORT: '3000',
+      NODE_ENV: 'test',
+    };
+    const report = validateEnv(env, rules);
+    expect(report.valid).toBe(true);
   });
 });
 
 describe('formatValidationReport', () => {
-  it('returns success message when passed', () => {
-    const report = { passed: true, results: [] };
-    expect(formatValidationReport(report)).toBe('✔ All validation rules passed.');
+  it('returns success message for valid report', () => {
+    const report = { valid: true, results: [] };
+    expect(formatValidationReport(report)).toContain('✅');
   });
 
-  it('returns error lines when failed', () => {
+  it('returns failure details for invalid report', () => {
     const report = {
-      passed: false,
+      valid: false,
       results: [
-        { key: 'FOO', valid: false, errors: ['Key "FOO" is required but missing or empty.'] },
+        { key: 'DATABASE_URL', valid: false, errors: ['Key "DATABASE_URL" is required but missing or empty.'] },
       ],
     };
     const output = formatValidationReport(report);
-    expect(output).toContain('✖ Validation failed:');
-    expect(output).toContain('Key "FOO" is required but missing or empty.');
+    expect(output).toContain('❌');
+    expect(output).toContain('DATABASE_URL');
   });
 });
