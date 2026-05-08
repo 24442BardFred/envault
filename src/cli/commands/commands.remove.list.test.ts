@@ -38,6 +38,14 @@ describe('removeCommand', () => {
     expect(saved).toHaveProperty('DB_HOST');
   });
 
+  it('preserves other keys when removing one', async () => {
+    await removeCommand('API_KEY');
+    const saved = vi.mocked(saveVault).mock.calls[0][2] as Record<string, string>;
+    expect(saved).toHaveProperty('DB_HOST', 'localhost');
+    expect(saved).toHaveProperty('DB_PORT', '5432');
+    expect(saved).not.toHaveProperty('API_KEY');
+  });
+
   it('exits if vault does not exist', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
@@ -66,5 +74,14 @@ describe('listCommand', () => {
     await listCommand(true);
     const output = consoleSpy.mock.calls.map(c => c[0]).join('\n');
     expect(output).toContain('DB_HOST=localhost');
+  });
+
+  it('lists all keys from the vault', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await listCommand(false);
+    const output = consoleSpy.mock.calls.map(c => c[0]).join('\n');
+    expect(output).toContain('DB_HOST');
+    expect(output).toContain('DB_PORT');
+    expect(output).toContain('API_KEY');
   });
 });
