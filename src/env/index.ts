@@ -1,43 +1,44 @@
-/**
- * env module — utilities for reading, writing, and managing .env records.
- */
+import fs from 'fs';
+import path from 'path';
+import { parseEnv, serialiseEnv } from './parser';
+import type { EnvMap } from './interpolate';
 
-export { parseEnv, serialiseEnv } from './parser';
-export type { EnvRecord } from './parser';
-
-import * as fs from 'fs';
-import * as path from 'path';
-import { parseEnv, serialiseEnv, EnvRecord } from './parser';
+export { parseEnv, serialiseEnv };
+export { validateEnv, formatValidationReport } from './validate';
+export { validateWithSchema, formatSchemaReport } from './schema';
+export { ejectEnvFromProcess } from './inject';
+export { interpolateEnv, extractRefs, resolveValue } from './interpolate';
+export type { InterpolationResult } from './interpolate';
 
 /**
  * Read and parse a .env file from disk.
- * Returns an empty record if the file does not exist.
  */
-export function readEnvFile(filePath: string): EnvRecord {
+export async function readEnvFile(filePath: string): Promise<EnvMap> {
   const resolved = path.resolve(filePath);
-  if (!fs.existsSync(resolved)) {
-    return {};
+  const raw = await fs.promises.readFile(resolved, 'utf-8');
+  return parseEnv(raw);
+}
+
+/**
+ * Serialise and write an env map to a .env file.
+ */
+export async function writeEnvFile(filePath: string, env: EnvMap): Promise<void> {
+  const resolved = path.resolve(filePath);
+  const content = serialiseEnv(env);
+  await fs.promises.writeFile(resolved, content, 'utf-8');
+}
+
+/**
+ * Merge an env map into an existing .env file (adds/overwrites keys).
+ */
+export async function mergeEnvFile(filePath: string, incoming: EnvMap): Promise<EnvMap> {
+  let existing: EnvMap = {};
+  try {
+    existing = await readEnvFile(filePath);
+  } catch {
+    // file may not exist yet
   }
-  const content = fs.readFileSync(resolved, 'utf-8');
-  return parseEnv(content);
-}
-
-/**
- * Write a key-value record to a .env file on disk.
- * Creates the file (and parent directories) if they do not exist.
- */
-export function writeEnvFile(filePath: string, record: EnvRecord): void {
-  const resolved = path.resolve(filePath);
-  fs.mkdirSync(path.dirname(resolved), { recursive: true });
-  fs.writeFileSync(resolved, serialiseEnv(record), 'utf-8');
-}
-
-/**
- * Merge additional env variables into an existing .env file.
- * Existing keys are overwritten; new keys are appended.
- */
-export function mergeEnvFile(filePath: string, additions: EnvRecord): void {
-  const existing = readEnvFile(filePath);
-  const merged = { ...existing, ...additions };
-  writeEnvFile(filePath, merged);
+  const merged = { ...existing, ...incoming };
+  await writeEnvFile(filePath, merged);
+  return merged;
 }
