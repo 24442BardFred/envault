@@ -21,6 +21,20 @@ export function prompt(question: string): Promise<string> {
   });
 }
 
+/**
+ * Prompts the user for a non-empty value, re-prompting if the input is blank.
+ */
+export async function promptRequired(question: string): Promise<string> {
+  let value = '';
+  while (!value) {
+    value = await prompt(question);
+    if (!value) {
+      console.error('This field is required. Please enter a value.');
+    }
+  }
+  return value;
+}
+
 export function registerProfileCommand(yargs: Argv): Argv {
   return yargs.command(
     'profile <action>',
@@ -38,17 +52,17 @@ export function registerProfileCommand(yargs: Argv): Argv {
       const action = argv.action as string;
       try {
         if (action === 'create') {
-          const name = (argv.name as string) || (await prompt('Profile name: '));
+          const name = (argv.name as string) || (await promptRequired('Profile name: '));
           const vaultPath =
-            (argv.vault as string) || (await prompt('Vault path: '));
+            (argv.vault as string) || (await promptRequired('Vault path: '));
           const profile = createProfile(name, vaultPath);
           console.log(`✅ Profile "${profile.name}" created.`);
         } else if (action === 'switch') {
-          const name = (argv.name as string) || (await prompt('Profile name: '));
+          const name = (argv.name as string) || (await promptRequired('Profile name: '));
           switchProfile(name);
           console.log(`🔄 Switched to profile "${name}".`);
         } else if (action === 'delete') {
-          const name = (argv.name as string) || (await prompt('Profile name: '));
+          const name = (argv.name as string) || (await promptRequired('Profile name: '));
           deleteProfile(name);
           console.log(`🗑️  Profile "${name}" deleted.`);
         } else if (action === 'list') {
