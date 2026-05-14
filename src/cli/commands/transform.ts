@@ -27,6 +27,13 @@ export function registerTransformCommand(program: Command): void {
       const { vault, vaultPath } = await loadVault(opts.profile);
       const keys = opts.keys ? opts.keys.split(',').map((k: string) => k.trim()) : undefined;
 
+      if (keys) {
+        const missingKeys = keys.filter((k) => !(k in vault));
+        if (missingKeys.length > 0) {
+          console.warn(`Warning: the following keys were not found in the vault: ${missingKeys.join(', ')}`);
+        }
+      }
+
       let result;
       try {
         result = transformEnv(vault, transformer, keys);
