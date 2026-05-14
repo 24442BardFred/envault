@@ -46,6 +46,16 @@ describe('diffEnv', () => {
     expect(result.changed).toEqual({});
     expect(result.unchanged).toEqual({});
   });
+
+  it('handles values containing = signs', () => {
+    const from = 'URL=http://example.com';
+    const to = 'URL=http://example.com?foo=bar';
+    const result = diffEnv(from, to);
+    expect(result.changed).toEqual({ URL: { from: 'http://example.com', to: 'http://example.com?foo=bar' } });
+    expect(result.added).toEqual({});
+    expect(result.removed).toEqual({});
+    expect(result.unchanged).toEqual({});
+  });
 });
 
 describe('formatDiff', () => {
