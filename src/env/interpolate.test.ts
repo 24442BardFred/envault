@@ -17,6 +17,10 @@ describe('extractRefs', () => {
   it('returns empty array for plain strings', () => {
     expect(extractRefs('no refs here')).toEqual([]);
   });
+
+  it('does not duplicate repeated references', () => {
+    expect(extractRefs('${A} and ${A} again')).toEqual(['A']);
+  });
 });
 
 describe('resolveValue', () => {
@@ -61,5 +65,12 @@ describe('interpolateEnv', () => {
     const result = interpolateEnv({ FOO: 'bar', BAZ: 'qux' });
     expect(result.resolved).toEqual({ FOO: 'bar', BAZ: 'qux' });
     expect(result.unresolved).toHaveLength(0);
+  });
+
+  it('handles empty env object', () => {
+    const result = interpolateEnv({});
+    expect(result.resolved).toEqual({});
+    expect(result.unresolved).toHaveLength(0);
+    expect(result.circular).toHaveLength(0);
   });
 });
