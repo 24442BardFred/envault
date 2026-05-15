@@ -1,72 +1,75 @@
 import { groupEnv, formatGroupReport } from './group';
 
+const sampleEnv: Record<string, string> = {
+  DB_HOST: 'localhost',
+  DB_PORT: '5432',
+  DB_NAME: 'mydb',
+  APP_NAME: 'envault',
+  APP_ENV: 'production',
+  SECRET: 'topsecret',
+};
+
 describe('groupEnv', () => {
-  const env = {
-    DB_HOST: 'localhost',
-    DB_PORT: '5432',
-    DB_NAME: 'mydb',
-    REDIS_HOST: 'localhost',
-    REDIS_PORT: '6379',
-    APP_NAME: 'envault',
-    PORT: '3000',
-    NODE_ENV: 'test',
-  };
-
-  it('groups keys by prefix', () => {
-    const result = groupEnv(env);
-    expect(result.groups['DB']).toBeDefined();
-    expect(Object.keys(result.groups['DB'])).toEqual(
-      expect.arrayContaining(['DB_HOST', 'DB_PORT', 'DB_NAME'])
-    );
-    expect(result.groups['REDIS']).toBeDefined();
-    expect(Object.keys(result.groups['REDIS'])).toEqual(
-      expect.arrayContaining(['REDIS_HOST', 'REDIS_PORT'])
-    );
+  it('groups keys by underscore prefix by default', () => {
+    const report = groupEnv(sampleEnv);
+    expect(report.groups['DB']).toEqual({
+      DB_HOST: 'localhost',
+      DB_PORT: '5432',
+      DB_NAME: 'mydb',
+    });
+    expect(report.groups['APP']).toEqual({
+      APP_NAME: 'envault',
+      APP_ENV: 'production',
+    });
   });
 
-  it('places keys without underscores in ungrouped', () => {
-    const result = groupEnv(env);
-    expect(result.ungrouped['PORT']).toBe('3000');
+  it('places keys with no delimiter match in ungrouped', () => {
+    const report = groupEnv(sampleEnv);
+    expect(report.ungrouped).toContain('SECRET');
   });
 
-  it('moves small groups to ungrouped when below minGroupSize', () => {
-    const result = groupEnv(env, 3);
-    // REDIS has 2 keys, below minGroupSize=3 → ungrouped
-    expect(result.groups['REDIS']).toBeUndefined();
-    expect(result.ungrouped['REDIS_HOST']).toBe('localhost');
-    expect(result.ungrouped['REDIS_PORT']).toBe('6379');
+  it('respects a custom delimiter', () => {
+    const env = { 'DB.HOST': 'localhost', 'DB.PORT': '5432', PLAIN: 'yes' };
+    const report = groupEnv(env, '.');
+    expect(report.groups['DB']).toEqual({ 'DB.HOST': 'localhost', 'DB.PORT': '5432' });
+    expect(report.ungrouped).toContain('PLAIN');
+    expect(report.delimiter).toBe('.');
   });
 
-  it('handles empty input', () => {
-    const result = groupEnv({});
-    expect(result.groups).toEqual({});
-    expect(result.ungrouped).toEqual({});
+  it('returns empty groups for empty env', () => {
+    const report = groupEnv({});
+    expect(Object.keys(report.groups)).toHaveLength(0);
+    expect(report.ungrouped).toHaveLength(0);
   });
 
-  it('places single-prefix keys in ungrouped with default minGroupSize=2', () => {
-    const result = groupEnv({ SOLO_KEY: 'value', OTHER: 'x' });
-    expect(result.groups['SOLO']).toBeUndefined();
-    expect(result.ungrouped['SOLO_KEY']).toBe('value');
+  it('handles env where all keys have no prefix', () => {
+    const env = { FOO: '1', BAR: '2' };
+    const report = groupEnv(env);
+    expect(Object.keys(report.groups)).toHaveLength(0);
+    expect(report.ungrouped).toEqual(expect.arrayContaining(['FOO', 'BAR']));
   });
 });
 
 describe('formatGroupReport', () => {
-  it('returns correct counts', () => {
-    const result = groupEnv({
-      DB_HOST: 'localhost',
-      DB_PORT: '5432',
-      PORT: '3000',
-    });
-    const report = formatGroupReport(result);
-    expect(report.totalKeys).toBe(3);
-    expect(report.groupCount).toBe(1);
-    expect(report.ungroupedCount).toBe(1);
-    expect(report.groups['DB']).toEqual(['DB_HOST', 'DB_PORT']);
+  it('includes group names and keys in output', () => {
+    const report = groupEnv(sampleEnv);
+    const output = formatGroupReport(report);
+    expect(output).toContain('DB');
+    expect(output).toContain('DB_HOST');
+    expect(output).toContain('APP');
+    expect(output).toContain('APP_NAME');
   });
 
-  it('returns sorted keys within each group', () => {
-    const result = groupEnv({ Z_B: '1', Z_A: '2', Z_C: '3' });
-    const report = formatGroupReport(result);
-    expect(report.groups['Z']).toEqual(['Z_A', 'Z_B', 'Z_C']);
+  it('mentions ungrouped keys', () => {
+    const report = groupEnv(sampleEnv);
+    const output = formatGroupReport(report);
+    expect(output).toContain('SECRET');
+  });
+
+  it('returns a non-empty string for empty env', () => {
+    const report = groupEnv({});
+    const output = formatGroupReport(report);
+    expect(typeof output).toBe('string');
+    expect(output.length).toBeGreaterThan(0);
   });
 });
