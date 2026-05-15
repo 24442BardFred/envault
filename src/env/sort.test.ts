@@ -1,66 +1,54 @@
 import { sortEnv, formatSortReport } from './sort';
 
-const sampleEnv: Record<string, string> = {
-  ZEBRA: 'z',
-  APP_NAME: 'myapp',
-  DB_HOST: 'localhost',
-  APP_PORT: '3000',
-  DB_PASS: 'secret',
-  ALPHA: 'a',
-};
+const sampleEnv = `ZEBRA=1\nAPPLE=2\nMango=3\nbanana=4`;
 
 describe('sortEnv', () => {
-  it('sorts keys in ascending order by default', () => {
-    const { keyOrder } = sortEnv(sampleEnv);
-    expect(keyOrder).toEqual(['ALPHA', 'APP_NAME', 'APP_PORT', 'DB_HOST', 'DB_PASS', 'ZEBRA']);
+  it('sorts keys alphabetically ascending by default', () => {
+    const { output, report } = sortEnv(sampleEnv);
+    expect(report.sorted[0]).toBe('APPLE');
+    expect(report.changed).toBe(true);
+    expect(output).toContain('APPLE=2');
   });
 
-  it('sorts keys in descending order', () => {
-    const { keyOrder } = sortEnv(sampleEnv, { order: 'desc' });
-    expect(keyOrder).toEqual(['ZEBRA', 'DB_PASS', 'DB_HOST', 'APP_PORT', 'APP_NAME', 'ALPHA']);
+  it('sorts keys alphabetically descending', () => {
+    const { report } = sortEnv(sampleEnv, { order: 'desc' });
+    expect(report.sorted[0]).toBe('ZEBRA');
   });
 
-  it('groups by prefix when option is set', () => {
-    const { keyOrder } = sortEnv(sampleEnv, { groupByPrefix: true });
-    const appKeys = keyOrder.filter((k) => k.startsWith('APP_'));
-    const dbKeys = keyOrder.filter((k) => k.startsWith('DB_'));
-    expect(appKeys).toEqual(['APP_NAME', 'APP_PORT']);
-    expect(dbKeys).toEqual(['DB_HOST', 'DB_PASS']);
-    // APP group should appear before DB group (asc)
-    expect(keyOrder.indexOf('APP_NAME')).toBeLessThan(keyOrder.indexOf('DB_HOST'));
+  it('sorts keys by length ascending', () => {
+    const { report } = sortEnv(sampleEnv, { strategy: 'length' });
+    expect(report.sorted[0]).toBe('ZEBRA');
   });
 
-  it('preserves all key-value pairs in sorted output', () => {
-    const { sorted } = sortEnv(sampleEnv);
-    expect(Object.keys(sorted).length).toBe(Object.keys(sampleEnv).length);
-    for (const [k, v] of Object.entries(sampleEnv)) {
-      expect(sorted[k]).toBe(v);
-    }
+  it('sorts keys using natural sort', () => {
+    const input = 'KEY10=a\nKEY2=b\nKEY1=c';
+    const { report } = sortEnv(input, { strategy: 'natural' });
+    expect(report.sorted).toEqual(['KEY1', 'KEY2', 'KEY10']);
   });
 
-  it('reports changed as false when already sorted', () => {
-    const alreadySorted = { ALPHA: 'a', BETA: 'b', GAMMA: 'g' };
-    const { changed } = sortEnv(alreadySorted);
-    expect(changed).toBe(false);
+  it('reports no change when already sorted', () => {
+    const input = 'ALPHA=1\nBETA=2\nGAMMA=3';
+    const { report } = sortEnv(input);
+    expect(report.changed).toBe(false);
   });
 
-  it('reports changed as true when order differs', () => {
-    const { changed } = sortEnv(sampleEnv);
-    expect(changed).toBe(true);
+  it('preserves values after sorting', () => {
+    const { output } = sortEnv(sampleEnv);
+    expect(output).toContain('ZEBRA=1');
+    expect(output).toContain('APPLE=2');
   });
 });
 
 describe('formatSortReport', () => {
-  it('returns no-change message when already sorted', () => {
-    const report = sortEnv({ A: '1', B: '2' });
-    expect(formatSortReport(report)).toContain('already in sorted order');
+  it('reports no change when unchanged', () => {
+    const msg = formatSortReport({ original: ['A', 'B'], sorted: ['A', 'B'], changed: false });
+    expect(msg).toMatch(/already in the desired order/);
   });
 
-  it('lists sorted keys when changes were made', () => {
-    const report = sortEnv(sampleEnv);
-    const output = formatSortReport(report);
-    expect(output).toContain('Sorted environment keys');
-    expect(output).toContain('ALPHA');
-    expect(output).toContain('ZEBRA');
+  it('shows before and after when changed', () => {
+    const msg = formatSortReport({ original: ['B', 'A'], sorted: ['A', 'B'], changed: true });
+    expect(msg).toMatch(/Before/);
+    expect(msg).toMatch(/After/);
+    expect(msg).toContain('A, B');
   });
 });

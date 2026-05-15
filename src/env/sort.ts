@@ -1,70 +1,71 @@
-/**
- * Sort environment variable entries by key, with optional grouping by prefix.
- */
+import { parseEnv, serialiseEnv } from './parser';
 
 export type SortOrder = 'asc' | 'desc';
+export type SortStrategy = 'alpha' | 'length' | 'natural';
 
 export interface SortOptions {
   order?: SortOrder;
-  groupByPrefix?: boolean;
-  prefixDelimiter?: string;
+  strategy?: SortStrategy;
+  groupComments?: boolean;
 }
 
 export interface SortReport {
-  original: Record<string, string>;
-  sorted: Record<string, string>;
+  original: string[];
+  sorted: string[];
   changed: boolean;
-  keyOrder: string[];
+}
+
+function naturalCompare(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function lengthCompare(a: string, b: string): number {
+  return a.length - b.length || a.localeCompare(b);
 }
 
 export function sortEnv(
-  env: Record<string, string>,
+  input: string,
   options: SortOptions = {}
-): SortReport {
-  const { order = 'asc', groupByPrefix = false, prefixDelimiter = '_' } = options;
-
+): { output: string; report: SortReport } {
+  const { order = 'asc', strategy = 'alpha' } = options;
+  const env = parseEnv(input);
   const keys = Object.keys(env);
 
-  let sortedKeys: string[];
-
-  if (groupByPrefix) {
-    const groups = new Map<string, string[]>();
-    for (const key of keys) {
-      const delimIndex = key.indexOf(prefixDelimiter);
-      const prefix = delimIndex !== -1 ? key.slice(0, delimIndex) : key;
-      if (!groups.has(prefix)) groups.set(prefix, []);
-      groups.get(prefix)!.push(key);
+  const compareFn = (a: string, b: string): number => {
+    let cmp: number;
+    if (strategy === 'length') {
+      cmp = lengthCompare(a, b);
+    } else if (strategy === 'natural') {
+      cmp = naturalCompare(a, b);
+    } else {
+      cmp = a.localeCompare(b);
     }
+    return order === 'desc' ? -cmp : cmp;
+  };
 
-    const sortedPrefixes = Array.from(groups.keys()).sort((a, b) =>
-      order === 'asc' ? a.localeCompare(b) : b.localeCompare(a)
-    );
-
-    sortedKeys = sortedPrefixes.flatMap((prefix) =>
-      groups.get(prefix)!.sort((a, b) =>
-        order === 'asc' ? a.localeCompare(b) : b.localeCompare(a)
-      )
-    );
-  } else {
-    sortedKeys = [...keys].sort((a, b) =>
-      order === 'asc' ? a.localeCompare(b) : b.localeCompare(a)
-    );
+  const sorted = [...keys].sort(compareFn);
+  const sortedEnv: Record<string, string> = {};
+  for (const key of sorted) {
+    sortedEnv[key] = env[key];
   }
 
-  const sorted: Record<string, string> = {};
-  for (const key of sortedKeys) {
-    sorted[key] = env[key];
-  }
-
-  const changed = keys.some((key, i) => key !== sortedKeys[i]);
-
-  return { original: env, sorted, changed, keyOrder: sortedKeys };
+  const output = serialiseEnv(sortedEnv);
+  return {
+    output,
+    report: {
+      original: keys,
+      sorted,
+      changed: keys.join(',') !== sorted.join(','),
+    },
+  };
 }
 
 export function formatSortReport(report: SortReport): string {
   if (!report.changed) {
-    return 'ℹ Keys are already in sorted order. No changes made.';
+    return 'Keys are already in the desired order. No changes made.';
   }
-  const lines = ['✔ Sorted environment keys:', ...report.keyOrder.map((k) => `  ${k}`)];
+  const lines: string[] = ['Sort complete:'];
+  lines.push(`  Before: ${report.original.join(', ')}`);
+  lines.push(`  After:  ${report.sorted.join(', ')}`);
   return lines.join('\n');
 }
