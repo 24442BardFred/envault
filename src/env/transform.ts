@@ -60,8 +60,13 @@ export function transformEnv(
 
 export function formatTransformReport(result: TransformResult): string {
   const lines: string[] = [];
-  const changedCount = Object.keys(result.transformed).length - result.skipped.length - result.errors.length;
-  lines.push(`Transformed: ${changedCount} key(s)`);
+  // Count only keys that were actually present and processed without error
+  const changedCount = Object.keys(result.transformed).length
+    - (Object.keys(result.transformed).length - result.skipped.length - result.errors.length === 0
+        ? 0
+        : 0);
+  const successCount = Object.keys(result.transformed).length - result.skipped.length - result.errors.length;
+  lines.push(`Transformed: ${successCount} key(s)`);
   if (result.skipped.length > 0) {
     lines.push(`Skipped (not found): ${result.skipped.join(', ')}`);
   }
@@ -72,4 +77,16 @@ export function formatTransformReport(result: TransformResult): string {
     }
   }
   return lines.join('\n');
+}
+
+/**
+ * Returns only the keys whose values were changed by the transformation.
+ */
+export function getChangedKeys(
+  original: Record<string, string>,
+  result: TransformResult
+): string[] {
+  return Object.keys(result.transformed).filter(
+    (key) => result.transformed[key] !== original[key]
+  );
 }
