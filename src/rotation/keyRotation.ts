@@ -11,6 +11,8 @@ export interface RotationResult {
 /**
  * Re-encrypts all vault entries with a new master password.
  * The old password is used to decrypt, the new password to re-encrypt.
+ *
+ * @throws {Error} If the old password is incorrect or decryption fails for any entry.
  */
 export async function rotateKey(
   vaultPath: string,
@@ -23,12 +25,21 @@ export async function rotateKey(
   const reEncrypted: Record<string, string> = {};
 
   const newKey = await deriveKey(newPassword, vault.salt);
+  // Derive the old key once outside the loop to avoid redundant derivations
+  const oldKey = await deriveKey(oldPassword, vault.salt);
 
   for (const [key, encryptedValue] of entries) {
-    const oldKey = await deriveKey(oldPassword, vault.salt);
-    const plaintext = await decrypt(encryptedValue, oldKey);
-    const newEncrypted = await encrypt(plaintext, newKey);
-    reEncrypted[key] = newEncrypted;
+    try {
+      const plaintext = await decrypt(encryptedValue, oldKey);
+      const newEncrypted = await encrypt(plaintext, newKey);
+      reEncrypted[key] = newEncrypted;
+    } catch (err) {
+      throw new Error(
+        `Failed to re-encrypt entry "${key}" during key rotation: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
   }
 
   const updatedVault = {
